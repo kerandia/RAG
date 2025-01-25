@@ -1,0 +1,34 @@
+{
+  "customer_feedback": [
+    {
+      "review_id": "001",
+      "customer_id": "C123",
+      "feedback": "The delivery was quick and the package was in perfect condition.",
+      "rating": 5,
+      "timestamp": "2025-01-17T10:00:00Z"
+    },
+    {
+      "review_id": "002",
+      "customer_id": "C124",
+      "feedback": "The delivery was late and the package was damaged.",
+      "rating": 2,
+      "timestamp": "2025-01-17T12:00:00Z"
+    },
+    {
+      "review_id": "003",
+      "customer_id": "C125",
+      "feedback": "The delivery was on time but the package was slightly damaged.",
+      "rating": 3,
+      "timestamp": "2025-01-17T14:00:00Z"
+    }
+  ],
+  "summary": {
+    "positive_feedback": 1,
+    "negative_feedback": 2,
+    "average_rating": 3.33,
+    "common_issues": [
+      "late delivery",
+      "damaged package"
+    ]
+  }
+}
