@@ -1,36 +1,234 @@
-# Logistics Feedback Analysis using Retrieval-Augmented Generation (RAG)
-I initially used a Jupyter Notebook (rag1.ipynb) for trying and testing my code and the RAG system. This allowed me to iteratively develop and refine my approach before creating the final Python script (logisticrag.py).
+# Logistics Feedback RAG Agent
 
-## Limitations
-The RAG system may not achieve 100% success in all cases due to the inherent limitations of the models and the quality of the feedback data.
-The system relies on the accuracy of the embedding and language models, which may not always perfectly capture the nuances of the feedback data.
+A production-quality **Retrieval-Augmented Generation (RAG) agent** for analysing
+customer feedback from a logistics company.  Built with the latest LangChain
+stack, ChromaDB persistent vector storage, hybrid retrieval and a beautiful Rich
+terminal UI.
 
-## Overview
-This project demonstrates the implementation of a RAG system to analyze customer feedback for a logistics company. While the system provides a powerful approach to generating relevant responses, it is important to acknowledge its limitations and continuously improve the models and data quality for better performance.
+---
 
+## Architecture
 
-## Assumptions
-- The feedback data is stored in a JSON file (`feedback_data.json`) and is structured as a list of dictionaries, each containing a `feedback` key.
-- The embedding model (`hf.co/CompendiumLabs/bge-base-en-v1.5-gguf`) and language model (`hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF`) from `ollama` are used to generate embeddings and responses.
-- The system retrieves the top N most relevant feedback chunks based on cosine similarity between the query and feedback embeddings.
+```
+main.py                     # CLI entry point
+app.py                      # Gradio web UI (Hugging Face Spaces)
+rag_agent/
+├── config.py               # Pydantic-based settings (env vars / .env file)
+├── document_processor.py   # JSON loader + RecursiveCharacterTextSplitter
+├── vector_store.py         # Persistent ChromaDB + configurable embeddings
+├── retriever.py            # Hybrid BM25 + semantic retrieval with RRF fusion
+├── tools.py                # LangChain tools: search, analytics, rating filter
+├── agent.py                # LangChain ReAct agent + per-session memory
+└── cli.py                  # Rich terminal UI (panels, tables, streaming)
+.github/
+└── workflows/
+    └── rag-analysis.yml    # GitHub Actions batch analysis
+tests/
+└── test_rag_agent.py       # Pytest suite (mock LLM – no API keys needed)
+```
 
-## Analysis
-- **Data Loading**: The feedback data is loaded from `feedback_data.json` and each feedback entry is converted into an embedding vector using the embedding model.
-- **Vector Database**: A vector database is maintained to store feedback chunks and their corresponding embedding vectors.
-- **Retrieval**: The retrieval function calculates the cosine similarity between the query embedding and feedback embeddings to find the most relevant feedback chunks.
-- **Generation**: The retrieved feedback chunks are used to construct a prompt for the language model, which generates a response based on the provided context.
+### Key upgrades over the original script
 
-## Key Decisions
-- **Embedding Model**: The `hf.co/CompendiumLabs/bge-base-en-v1.5-gguf` embedding model was chosen for its effectiveness in generating meaningful embeddings for text data.
-- **Language Model**: The `hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF` language model was selected for its ability to generate coherent and contextually relevant responses.
-- **Cosine Similarity**: Cosine similarity was used as the metric to measure the relevance of feedback chunks to the query, as it effectively captures the semantic similarity between vectors.
-- **RAG System**: The RAG system was chosen for its ability to combine retrieval-based and generation-based approaches, providing a balance between accuracy and relevance. However, it is acknowledged that the system may not achieve 100% success in all cases.
+| Feature | Original | New |
+|---|---|---|
+| Vector store | In-memory list | **Persistent ChromaDB** |
+| Retrieval | Cosine similarity only | **Hybrid BM25 + semantic (RRF)** |
+| Agent | None (Q&A loop) | **LangChain ReAct agent with tools** |
+| Conversation | Stateless | **Per-session memory** |
+| LLM provider | Ollama only | **Ollama, OpenAI, or OpenRouter** |
+| Document metadata | Not stored | **rating, review_id, timestamp** |
+| UI | print() | **Rich panels + tables + Gradio web UI** |
+| Config | Hardcoded | **Pydantic Settings + env vars** |
+
+---
+
+## Setup
+
+### 1 – Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2 – Configure your LLM provider
+
+Copy `.env.example` to `.env` and fill in your values:
+
+```bash
+cp .env.example .env
+```
+
+**Option A – OpenRouter (recommended, free tier available):**
+
+```bash
+RAG_LLM_PROVIDER=openrouter
+RAG_OPENROUTER_API_KEY=sk-or-v1-...
+RAG_OPENROUTER_LANGUAGE_MODEL=meta-llama/llama-3.2-3b-instruct:free
+```
+
+Get a free API key at [openrouter.ai/keys](https://openrouter.ai/keys) — no credit card required.
+Embeddings run locally via `sentence-transformers/all-MiniLM-L6-v2` (no key needed).
+
+Free models you can use (append `:free`):
+
+| Model | Context | Notes |
+|---|---|---|
+| `meta-llama/llama-3.2-3b-instruct:free` | 128k | Fast, good for Q&A |
+| `google/gemma-3-4b-it:free` | 32k | Google Gemma 3 |
+| `mistralai/mistral-7b-instruct:free` | 32k | Mistral 7B |
+| `deepseek/deepseek-r1:free` | 163k | Reasoning model |
+
+Browse all free models at [openrouter.ai/models?q=:free](https://openrouter.ai/models?q=:free).
+
+**Option B – Ollama (local, default):**
+
+```bash
+ollama pull hf.co/CompendiumLabs/bge-base-en-v1.5-gguf
+ollama pull hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF
+ollama serve
+```
+
+**Option C – OpenAI:**
+
+```bash
+RAG_LLM_PROVIDER=openai
+RAG_OPENAI_API_KEY=sk-...
+```
+
+---
 
 ## Usage
-1. **Install Dependencies**: Ensure that the required libraries (`ollama`, `concurrent.futures`, `json`, `os`, `time`) are installed.
-2. **Prepare Feedback Data**: Ensure that the `feedback_data.json` file is present and correctly structured.
-3. **Run the Script**: Execute the `logisticrag.py` script to start the system. The user can interact with the system by asking questions, and the system will provide responses based on the customer feedback data.
 
-## Example
-```sh
-python logisticrag.py
+```bash
+# Run with defaults (Ollama, feedback_data.json in current directory)
+python main.py
+
+# Use OpenRouter (free)
+python main.py --provider openrouter
+
+# Specify a different data file
+python main.py --data /path/to/feedback.json
+
+# Use OpenAI backend
+python main.py --provider openai
+
+# Increase retrieved documents
+python main.py --top-k 8
+
+# Enable verbose logging
+python main.py --log-level INFO
+```
+
+### Interactive commands
+
+| Command | Description |
+|---|---|
+| `<question>` | Ask the agent (uses ReAct loop with tools) |
+| `/rag <question>` | Direct RAG (single-step, no tool loop) |
+| `/stats` | Show rating statistics table |
+| `/history` | Print conversation history |
+| `/clear` | Clear conversation history |
+| `/help` | Show help |
+| `exit` / `quit` | Quit |
+
+---
+
+## Hosting
+
+### Option 1 – Hugging Face Spaces (free, public URL) ⭐ recommended
+
+1. Create a Space at [huggingface.co/spaces](https://huggingface.co/spaces) → SDK: **Gradio**
+2. Push this repository (or just `app.py`, `requirements.txt`, `feedback_data.json`, `rag_agent/`)
+3. In your Space settings go to **Variables and secrets** and add:
+   - `RAG_OPENROUTER_API_KEY` = your OpenRouter key
+4. The Gradio web UI starts automatically — you get a permanent public URL
+
+### Option 2 – GitHub Actions (batch analysis, no server required)
+
+Run analysis on-demand or whenever `feedback_data.json` changes:
+
+1. Add your OpenRouter key as a **GitHub Actions secret** named `OPENROUTER_API_KEY`
+   (Settings → Secrets and variables → Actions → New repository secret)
+2. Trigger the workflow manually from the **Actions** tab → *RAG Batch Analysis*,
+   or it runs automatically on every push that modifies `feedback_data.json`
+3. Download the JSON report from the workflow run's **Artifacts**
+
+> GitHub Actions is a CI/CD runner, not a persistent service — it's perfect for
+> scheduled or event-driven analysis jobs.
+
+### Option 3 – GitHub Codespaces (development / demo)
+
+1. Open this repo in Codespaces (Code → Codespaces → New codespace)
+2. Run `pip install -r requirements.txt` in the terminal
+3. Set `RAG_OPENROUTER_API_KEY` in the Codespace secrets (Settings → Codespaces)
+4. `python main.py --provider openrouter` — runs in your browser
+
+### Option 4 – Other free cloud platforms
+
+| Platform | Free tier | How to deploy |
+|---|---|---|
+| [Render](https://render.com) | 750 h/month | Create a **Web Service**, set env vars, run `python app.py` |
+| [Railway](https://railway.app) | $5 credit/month | Connect repo, set env vars |
+| [Fly.io](https://fly.io) | 3 VMs free | `fly launch` in repo root |
+| [Replit](https://replit.com) | Always-on for Deploying | Import repo, set Secrets, run `app.py` |
+
+---
+
+## Configuration
+
+All settings can be overridden via environment variables prefixed with `RAG_`
+or by creating a `.env` file in the project root.
+
+| Variable | Default | Description |
+|---|---|---|
+| `RAG_LLM_PROVIDER` | `ollama` | `ollama`, `openai`, or `openrouter` |
+| `RAG_OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+| `RAG_OLLAMA_EMBEDDING_MODEL` | `hf.co/CompendiumLabs/bge-base-en-v1.5-gguf` | Embedding model |
+| `RAG_OLLAMA_LANGUAGE_MODEL` | `hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF` | Language model |
+| `RAG_OPENAI_API_KEY` | _(empty)_ | OpenAI API key |
+| `RAG_OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | OpenAI embedding model |
+| `RAG_OPENAI_LANGUAGE_MODEL` | `gpt-4o-mini` | OpenAI language model |
+| `RAG_OPENROUTER_API_KEY` | _(empty)_ | OpenRouter API key |
+| `RAG_OPENROUTER_LANGUAGE_MODEL` | `meta-llama/llama-3.2-3b-instruct:free` | OpenRouter model |
+| `RAG_HUGGINGFACE_EMBEDDING_MODEL` | `all-MiniLM-L6-v2` | Local embeddings (used with openrouter) |
+| `RAG_CHROMA_PERSIST_DIR` | `./chroma_db` | ChromaDB storage path |
+| `RAG_RETRIEVAL_TOP_K` | `5` | Documents retrieved per query |
+| `RAG_RETRIEVAL_BM25_WEIGHT` | `0.4` | BM25 weight in hybrid retrieval |
+| `RAG_RETRIEVAL_SEMANTIC_WEIGHT` | `0.6` | Semantic weight in hybrid retrieval |
+| `RAG_TEMPERATURE` | `0.1` | LLM sampling temperature |
+| `RAG_FEEDBACK_DATA_PATH` | `./feedback_data.json` | Path to feedback JSON |
+
+---
+
+## Agent Tools
+
+The ReAct agent can call the following tools autonomously:
+
+| Tool | Description |
+|---|---|
+| `search_feedback` | Hybrid semantic + keyword search over feedback |
+| `get_feedback_by_rating` | Filter feedback to a rating range (e.g. 1-2 for negatives) |
+| `analyze_ratings` | Compute count, average, median, min/max and distribution |
+| `summarize_all_feedback` | Return all feedback as a structured list |
+
+---
+
+## Running Tests
+
+```bash
+pip install pytest
+pytest tests/ -v
+```
+
+Tests use mocked LLMs and embeddings – no running Ollama server or API key
+required.
+
+---
+
+## Limitations
+
+- The ChromaDB vector store must be rebuilt if `feedback_data.json` changes
+  significantly (delete the `chroma_db/` directory to force a rebuild).
+- Response quality depends on the quality of the chosen embedding and language models.
+- The system is intentionally scoped to the loaded feedback corpus; it will not
+  answer questions outside that context.
