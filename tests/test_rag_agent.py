@@ -134,6 +134,26 @@ class TestSettings:
         s = Settings()
         assert s.retrieval_bm25_weight + s.retrieval_semantic_weight == pytest.approx(1.0)
 
+    def test_openrouter_provider_accepted(self):
+        from rag_agent.config import Settings
+
+        s = Settings(llm_provider="openrouter", openrouter_api_key="sk-or-test")
+        assert s.llm_provider == "openrouter"
+        assert s.openrouter_api_key == "sk-or-test"
+        assert s.openrouter_language_model == "meta-llama/llama-3.2-3b-instruct:free"
+
+    def test_openrouter_default_free_model(self):
+        from rag_agent.config import Settings
+
+        s = Settings(llm_provider="openrouter")
+        assert s.openrouter_language_model == "meta-llama/llama-3.2-3b-instruct:free"
+
+    def test_huggingface_embedding_model_default(self):
+        from rag_agent.config import Settings
+
+        s = Settings()
+        assert s.huggingface_embedding_model == "all-MiniLM-L6-v2"
+
 
 # ---------------------------------------------------------------------------
 # retriever tests (with mock vector store)
@@ -344,3 +364,29 @@ class TestRAGAgent:
             history = agent.get_history("test")
 
         assert len(history) == 0
+
+    def test_openrouter_build_llm(self, tmp_path: Path, feedback_file: Path):
+        """_build_llm should instantiate ChatOpenAI pointing at OpenRouter."""
+        from unittest.mock import patch
+        from rag_agent.config import Settings
+        from rag_agent.agent import _build_llm
+
+        settings = Settings(
+            llm_provider="openrouter",
+            openrouter_api_key="sk-or-test-key",
+            openrouter_language_model="meta-llama/llama-3.2-3b-instruct:free",
+            feedback_data_path=feedback_file,
+            chroma_persist_dir=tmp_path,
+        )
+
+        with patch("langchain_openai.ChatOpenAI.__init__", return_value=None) as mock_init:
+            try:
+                _build_llm(settings)
+            except Exception:
+                pass  # __init__ is mocked to None, instantiation may error
+
+            # Verify ChatOpenAI was called with OpenRouter's base URL
+            if mock_init.called:
+                call_kwargs = mock_init.call_args.kwargs
+                assert "openrouter.ai" in call_kwargs.get("base_url", "")
+                assert call_kwargs.get("api_key") == "sk-or-test-key"

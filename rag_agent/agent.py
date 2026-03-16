@@ -48,6 +48,21 @@ def _build_llm(settings: "Settings") -> "BaseChatModel":
             temperature=settings.temperature,
             streaming=settings.streaming,
         )
+    if settings.llm_provider == "openrouter":
+        from langchain_openai import ChatOpenAI
+
+        # OpenRouter is fully OpenAI-API-compatible; just swap the base URL.
+        return ChatOpenAI(
+            model=settings.openrouter_language_model,
+            api_key=settings.openrouter_api_key,
+            base_url=settings.openrouter_base_url,
+            temperature=settings.temperature,
+            streaming=settings.streaming,
+            default_headers={
+                "HTTP-Referer": "https://github.com/kerandia/RAG",
+                "X-Title": "Logistics RAG Agent",
+            },
+        )
     from langchain_ollama import ChatOllama
 
     return ChatOllama(

@@ -1,0 +1,95 @@
+# GitHub Actions workflow: run batch RAG analysis on push or on-demand.
+#
+# This workflow lets you use GitHub as a "serverless" runner for the RAG agent:
+# - It installs dependencies, builds the vector store, and runs a set of
+#   pre-defined questions against the feedback data.
+# - Results are saved as a workflow artifact (JSON report) you can download.
+#
+# Required GitHub Secret (Settings > Secrets and variables > Actions):
+#   OPENROUTER_API_KEY   – your key from https://openrouter.ai (free tier works)
+#
+# Optional GitHub Variables (Actions > Variables):
+#   OPENROUTER_MODEL     – default: meta-llama/llama-3.2-3b-instruct:free
+
+name: RAG Batch Analysis
+
+on:
+  workflow_dispatch:          # manual trigger from Actions tab
+    inputs:
+      questions:
+        description: "Newline-separated questions to analyse (leave blank for defaults)"
+        required: false
+        default: ""
+  push:
+    paths:
+      - "feedback_data.json"  # auto-run when feedback data changes
+
+jobs:
+  analyse:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run RAG batch analysis
+        env:
+          RAG_LLM_PROVIDER: openrouter
+          RAG_OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          RAG_OPENROUTER_LANGUAGE_MODEL: ${{ vars.OPENROUTER_MODEL || 'meta-llama/llama-3.2-3b-instruct:free' }}
+          RAG_CHROMA_PERSIST_DIR: /tmp/chroma_db
+        run: |
+          python - << 'EOF'
+          import json, os, sys
+          from pathlib import Path
+
+          from rag_agent.config import Settings
+          from rag_agent.document_processor import chunk_documents, load_feedback_documents
+          from rag_agent.vector_store import build_vector_store
+          from rag_agent.agent import RAGAgent
+
+          DEFAULT_QUESTIONS = [
+              "What are the most common complaints in the feedback?",
+              "Summarise the positive reviews (rating 4 or 5).",
+              "What is the overall customer satisfaction level?",
+              "What improvements do customers suggest?",
+          ]
+
+          raw_input = """${{ github.event.inputs.questions }}""".strip()
+          questions = [q.strip() for q in raw_input.splitlines() if q.strip()] or DEFAULT_QUESTIONS
+
+          settings = Settings()
+          raw_docs = load_feedback_documents(settings.feedback_data_path)
+          documents = chunk_documents(raw_docs)
+          vector_store = build_vector_store(settings, documents)
+          agent = RAGAgent(settings=settings, vector_store=vector_store, documents=documents)
+
+          results = []
+          for q in questions:
+              print(f"\n--- Question: {q} ---")
+              answer = agent.direct_rag(q, session_id="batch")
+              print(answer)
+              results.append({"question": q, "answer": answer})
+
+          Path("rag_report.json").write_text(json.dumps(results, indent=2))
+          print("\nReport saved to rag_report.json")
+          EOF
+
+      - name: Upload analysis report
+        uses: actions/upload-artifact@v4
+        with:
+          name: rag-analysis-report
+          path: rag_report.json
+          retention-days: 30

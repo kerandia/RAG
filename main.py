@@ -19,7 +19,7 @@ def _parse_args() -> argparse.Namespace:
     )
     parser.add_argument(
         "--provider",
-        choices=["ollama", "openai"],
+        choices=["ollama", "openai", "openrouter"],
         default=None,
         help="LLM backend (overrides RAG_LLM_PROVIDER env var).",
     )

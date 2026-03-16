@@ -20,9 +20,12 @@ class Settings(BaseSettings):
     )
 
     # LLM provider
-    llm_provider: Literal["ollama", "openai"] = Field(
+    llm_provider: Literal["ollama", "openai", "openrouter"] = Field(
         default="ollama",
-        description="LLM backend provider: 'ollama' (local) or 'openai'.",
+        description=(
+            "LLM backend provider: 'ollama' (local), 'openai', or "
+            "'openrouter' (free models via openrouter.ai)."
+        ),
     )
 
     # Ollama settings
@@ -51,6 +54,34 @@ class Settings(BaseSettings):
     openai_language_model: str = Field(
         default="gpt-4o-mini",
         description="OpenAI language model name.",
+    )
+
+    # OpenRouter settings (used when llm_provider='openrouter')
+    # Sign up free at https://openrouter.ai – no credit card needed for free models.
+    openrouter_api_key: str = Field(
+        default="",
+        description="OpenRouter API key (set RAG_OPENROUTER_API_KEY env var).",
+    )
+    openrouter_language_model: str = Field(
+        default="meta-llama/llama-3.2-3b-instruct:free",
+        description=(
+            "OpenRouter model name. Free models end with ':free'. "
+            "Examples: 'meta-llama/llama-3.2-3b-instruct:free', "
+            "'google/gemma-3-4b-it:free', 'mistralai/mistral-7b-instruct:free'."
+        ),
+    )
+    openrouter_base_url: str = Field(
+        default="https://openrouter.ai/api/v1",
+        description="OpenRouter API base URL.",
+    )
+    # OpenRouter doesn't provide embeddings; sentence-transformers runs locally.
+    huggingface_embedding_model: str = Field(
+        default="all-MiniLM-L6-v2",
+        description=(
+            "Sentence-Transformers model used for embeddings when provider is "
+            "'openrouter' (runs locally, no API key required). "
+            "See https://www.sbert.net/docs/pretrained_models.html for options."
+        ),
     )
 
     # Vector store

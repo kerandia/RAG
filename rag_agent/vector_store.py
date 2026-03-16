@@ -19,6 +19,11 @@ logger = logging.getLogger(__name__)
 def _build_embeddings(settings: "Settings") -> Embeddings:
     """Instantiate the embedding model based on the configured provider.
 
+    - ``openai``: Uses OpenAI's hosted embedding API.
+    - ``openrouter``: OpenRouter does not offer embeddings, so a local
+      ``sentence-transformers`` model is used instead (no API key needed).
+    - ``ollama`` (default): Uses the configured Ollama embedding model.
+
     Args:
         settings: Application settings.
 
@@ -32,6 +37,11 @@ def _build_embeddings(settings: "Settings") -> Embeddings:
             model=settings.openai_embedding_model,
             api_key=settings.openai_api_key,
         )
+    if settings.llm_provider == "openrouter":
+        # OpenRouter has no embedding API; run sentence-transformers locally.
+        from langchain_huggingface import HuggingFaceEmbeddings
+
+        return HuggingFaceEmbeddings(model_name=settings.huggingface_embedding_model)
     # Default: Ollama
     from langchain_ollama import OllamaEmbeddings
 
