@@ -1,36 +1,156 @@
-# Logistics Feedback Analysis using Retrieval-Augmented Generation (RAG)
-I initially used a Jupyter Notebook (rag1.ipynb) for trying and testing my code and the RAG system. This allowed me to iteratively develop and refine my approach before creating the final Python script (logisticrag.py).
+# Logistics Feedback RAG Agent
 
-## Limitations
-The RAG system may not achieve 100% success in all cases due to the inherent limitations of the models and the quality of the feedback data.
-The system relies on the accuracy of the embedding and language models, which may not always perfectly capture the nuances of the feedback data.
+A production-quality **Retrieval-Augmented Generation (RAG) agent** for analysing
+customer feedback from a logistics company.  Built with the latest LangChain
+stack, ChromaDB persistent vector storage, hybrid retrieval and a beautiful Rich
+terminal UI.
 
-## Overview
-This project demonstrates the implementation of a RAG system to analyze customer feedback for a logistics company. While the system provides a powerful approach to generating relevant responses, it is important to acknowledge its limitations and continuously improve the models and data quality for better performance.
+---
 
+## Architecture
 
-## Assumptions
-- The feedback data is stored in a JSON file (`feedback_data.json`) and is structured as a list of dictionaries, each containing a `feedback` key.
-- The embedding model (`hf.co/CompendiumLabs/bge-base-en-v1.5-gguf`) and language model (`hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF`) from `ollama` are used to generate embeddings and responses.
-- The system retrieves the top N most relevant feedback chunks based on cosine similarity between the query and feedback embeddings.
+```
+main.py                     # CLI entry point
+rag_agent/
+├── config.py               # Pydantic-based settings (env vars / .env file)
+├── document_processor.py   # JSON loader + RecursiveCharacterTextSplitter
+├── vector_store.py         # Persistent ChromaDB + configurable embeddings
+├── retriever.py            # Hybrid BM25 + semantic retrieval with RRF fusion
+├── tools.py                # LangChain tools: search, analytics, rating filter
+├── agent.py                # LangChain ReAct agent + per-session memory
+└── cli.py                  # Rich terminal UI (panels, tables, streaming)
+tests/
+└── test_rag_agent.py       # Pytest suite (mock LLM – no API keys needed)
+```
 
-## Analysis
-- **Data Loading**: The feedback data is loaded from `feedback_data.json` and each feedback entry is converted into an embedding vector using the embedding model.
-- **Vector Database**: A vector database is maintained to store feedback chunks and their corresponding embedding vectors.
-- **Retrieval**: The retrieval function calculates the cosine similarity between the query embedding and feedback embeddings to find the most relevant feedback chunks.
-- **Generation**: The retrieved feedback chunks are used to construct a prompt for the language model, which generates a response based on the provided context.
+### Key upgrades over the original script
 
-## Key Decisions
-- **Embedding Model**: The `hf.co/CompendiumLabs/bge-base-en-v1.5-gguf` embedding model was chosen for its effectiveness in generating meaningful embeddings for text data.
-- **Language Model**: The `hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF` language model was selected for its ability to generate coherent and contextually relevant responses.
-- **Cosine Similarity**: Cosine similarity was used as the metric to measure the relevance of feedback chunks to the query, as it effectively captures the semantic similarity between vectors.
-- **RAG System**: The RAG system was chosen for its ability to combine retrieval-based and generation-based approaches, providing a balance between accuracy and relevance. However, it is acknowledged that the system may not achieve 100% success in all cases.
+| Feature | Original | New |
+|---|---|---|
+| Vector store | In-memory list | **Persistent ChromaDB** |
+| Retrieval | Cosine similarity only | **Hybrid BM25 + semantic (RRF)** |
+| Agent | None (Q&A loop) | **LangChain ReAct agent with tools** |
+| Conversation | Stateless | **Per-session memory** |
+| LLM provider | Ollama only | **Ollama or OpenAI (configurable)** |
+| Document metadata | Not stored | **rating, review_id, timestamp** |
+| UI | print() | **Rich panels + tables** |
+| Config | Hardcoded | **Pydantic Settings + env vars** |
+
+---
+
+## Setup
+
+### 1 – Install dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+### 2 – Start the Ollama server (local mode)
+
+```bash
+# Pull required models
+ollama pull hf.co/CompendiumLabs/bge-base-en-v1.5-gguf
+ollama pull hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF
+
+# Start the server (runs on http://localhost:11434 by default)
+ollama serve
+```
+
+### 3 – (Optional) Use OpenAI instead
+
+```bash
+export RAG_LLM_PROVIDER=openai
+export RAG_OPENAI_API_KEY=sk-...
+```
+
+---
 
 ## Usage
-1. **Install Dependencies**: Ensure that the required libraries (`ollama`, `concurrent.futures`, `json`, `os`, `time`) are installed.
-2. **Prepare Feedback Data**: Ensure that the `feedback_data.json` file is present and correctly structured.
-3. **Run the Script**: Execute the `logisticrag.py` script to start the system. The user can interact with the system by asking questions, and the system will provide responses based on the customer feedback data.
 
-## Example
-```sh
-python logisticrag.py
+```bash
+# Run with defaults (Ollama, feedback_data.json in current directory)
+python main.py
+
+# Specify a different data file
+python main.py --data /path/to/feedback.json
+
+# Use OpenAI backend
+python main.py --provider openai
+
+# Increase retrieved documents
+python main.py --top-k 8
+
+# Enable verbose logging
+python main.py --log-level INFO
+```
+
+### Interactive commands
+
+| Command | Description |
+|---|---|
+| `<question>` | Ask the agent (uses ReAct loop with tools) |
+| `/rag <question>` | Direct RAG (single-step, no tool loop) |
+| `/stats` | Show rating statistics table |
+| `/history` | Print conversation history |
+| `/clear` | Clear conversation history |
+| `/help` | Show help |
+| `exit` / `quit` | Quit |
+
+---
+
+## Configuration
+
+All settings can be overridden via environment variables prefixed with `RAG_`
+or by creating a `.env` file in the project root.
+
+| Variable | Default | Description |
+|---|---|---|
+| `RAG_LLM_PROVIDER` | `ollama` | `ollama` or `openai` |
+| `RAG_OLLAMA_BASE_URL` | `http://localhost:11434` | Ollama server URL |
+| `RAG_OLLAMA_EMBEDDING_MODEL` | `hf.co/CompendiumLabs/bge-base-en-v1.5-gguf` | Embedding model |
+| `RAG_OLLAMA_LANGUAGE_MODEL` | `hf.co/bartowski/Llama-3.2-1B-Instruct-GGUF` | Language model |
+| `RAG_OPENAI_API_KEY` | _(empty)_ | OpenAI API key |
+| `RAG_OPENAI_EMBEDDING_MODEL` | `text-embedding-3-small` | OpenAI embedding model |
+| `RAG_OPENAI_LANGUAGE_MODEL` | `gpt-4o-mini` | OpenAI language model |
+| `RAG_CHROMA_PERSIST_DIR` | `./chroma_db` | ChromaDB storage path |
+| `RAG_RETRIEVAL_TOP_K` | `5` | Documents retrieved per query |
+| `RAG_RETRIEVAL_BM25_WEIGHT` | `0.4` | BM25 weight in hybrid retrieval |
+| `RAG_RETRIEVAL_SEMANTIC_WEIGHT` | `0.6` | Semantic weight in hybrid retrieval |
+| `RAG_TEMPERATURE` | `0.1` | LLM sampling temperature |
+| `RAG_FEEDBACK_DATA_PATH` | `./feedback_data.json` | Path to feedback JSON |
+
+---
+
+## Agent Tools
+
+The ReAct agent can call the following tools autonomously:
+
+| Tool | Description |
+|---|---|
+| `search_feedback` | Hybrid semantic + keyword search over feedback |
+| `get_feedback_by_rating` | Filter feedback to a rating range (e.g. 1-2 for negatives) |
+| `analyze_ratings` | Compute count, average, median, min/max and distribution |
+| `summarize_all_feedback` | Return all feedback as a structured list |
+
+---
+
+## Running Tests
+
+```bash
+pip install pytest
+pytest tests/ -v
+```
+
+Tests use mocked LLMs and embeddings – no running Ollama server or API key
+required.
+
+---
+
+## Limitations
+
+- The ChromaDB vector store must be rebuilt if `feedback_data.json` changes
+  significantly (delete the `chroma_db/` directory to force a rebuild).
+- Response quality depends on the quality of the chosen embedding and language models.
+- The system is intentionally scoped to the loaded feedback corpus; it will not
+  answer questions outside that context.
